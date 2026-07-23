@@ -142,21 +142,39 @@ function parse_model(m)
         id2tok[id] = tok
     end
 
-    ranks = Dict{Tuple{String,String},Int}()
-    sizehint!(ranks, length(m.merges))
+    # Byte-level alphabet → base token ids. Vocabs may omit chars for bytes
+    # that cannot occur in valid UTF-8 (ModernBERT does); those entries stay
+    # -1 and error at encode time if ever hit.
+    char_id = fill(Int32(-1), 0x180)
+    hits = 0
+    for b in 0x00:0xff
+        c = BYTE2CHAR[b+1]
+        id = get(vocab, string(c), -1)
+        id >= 0 && (hits += 1)
+        char_id[UInt32(c)+1] = id
+    end
+    hits > 128 || error("Bop: vocab lacks the byte-level alphabet — not a byte-level BPE tokenizer?")
+
+    pair_tbl = Dict{UInt64,Tuple{Int32,Int32}}()
+    sizehint!(pair_tbl, length(m.merges))
     for (i, merge) in enumerate(m.merges)
-        pair = if merge isa AbstractString
+        a, b = if merge isa AbstractString
             parts = split(merge, ' ')
             length(parts) == 2 || error("Bop: malformed merge entry $(repr(merge))")
-            (String(parts[1]), String(parts[2]))
+            String(parts[1]), String(parts[2])
         else
             length(merge) == 2 || error("Bop: malformed merge entry")
-            (String(merge[1]), String(merge[2]))
+            String(merge[1]), String(merge[2])
         end
-        get!(ranks, pair, i)
+        la, lb = get(vocab, a, -1), get(vocab, b, -1)
+        merged = get(vocab, a * b, -1)
+        (la < 0 || lb < 0 || merged < 0) &&
+            error("Bop: merge $(repr(a)) + $(repr(b)) refers to tokens missing from vocab")
+        get!(pair_tbl, pair_key(Int32(la), Int32(lb)), (Int32(i), Int32(merged)))
     end
 
-    return BPE(vocab, id2tok, ranks, Bool(get(m, :ignore_merges, false)), Dict{String,Vector{Int}}())
+    return BPE(vocab, id2tok, char_id, pair_tbl,
+        Bool(get(m, :ignore_merges, false)), Dict{String,Vector{Int32}}())
 end
 
 # Extract the single-sequence template from the post-processor, if any.

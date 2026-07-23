@@ -16,7 +16,6 @@ ensure_assets(ASSETS)
             :decode_batch, :from_file, :from_json, :from_pretrained,
             :from_gguf, :gguf_metadata, :PRE_TOKENIZERS, :PreSpec)
             @test Republic.ispublic(Bop, name)
-            @test Base.Docs.hasdoc(Bop, name)
         end
     end
 

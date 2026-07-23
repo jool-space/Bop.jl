@@ -16,6 +16,27 @@ ensure_assets(ASSETS)
         @test String(take!(io)) == s
     end
 
+    @testset "inference" begin
+        # @inferred checks return-type inference at the API boundary (it
+        # does not prove the absence of internal dynamic dispatch).
+        tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))   # NFC + Split
+        gp = Bop.from_file(joinpath(ASSETS, "gpt2", "tokenizer.json"))       # builtin regex path
+        enc = @inferred encode(tok, "hello world")
+        @test enc isa Bop.Encoding
+        @test @inferred(encode(tok, Vector{UInt8}(codeunits("hello world")))) isa Bop.Encoding
+        @test @inferred(encode(gp, "hello world")) isa Bop.Encoding
+        @test @inferred(decode(tok, enc.ids)) isa String
+        @test @inferred((e -> e.ids)(enc)) isa Vector{Int}
+        @test @inferred((e -> e.tokens)(enc)) isa Vector{String}
+        @test @inferred(Bop.bpe!(Int[], tok.model, SubString("abc"))) isa Vector{Int}
+        @test @inferred(Bop.split_piece!(SubString{String}[], tok.splits[1], SubString("a b"))) isa Vector{SubString{String}}
+        @test @inferred(Bop.encode_segment!(Int[], tok, SubString("hello"))) isa Vector{Int}
+        sv = Bop.StringViews.StringView(codeunits("hello"))
+        @test @inferred(Bop.encode_segment!(Int[], tok, SubString(sv))) isa Vector{Int}
+        @test @inferred(Bop.encode_segment!(Int[], gp, SubString(sv))) isa Vector{Int}
+        @test @inferred(Bop.token_string(tok, 100)) isa String
+    end
+
     @testset "bytes input" begin
         tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
         fx = JSON3.read(read(joinpath(FIXTURES, "qwen3.5.json"), String))

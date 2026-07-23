@@ -1,7 +1,7 @@
 # Generate differential-test fixtures: run HF `tokenizers` (the Rust library
 # Bop replaces) over a battery of adversarial cases and freeze ids/tokens/
 # decodes as JSON. Run from repo root:
-#   uv run --with tokenizers python3 scripts/gen_fixtures.py
+#   uv run --with tokenizers python3 test/scripts/gen_fixtures.py
 import json
 import glob
 import os

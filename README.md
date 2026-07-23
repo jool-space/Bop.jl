@@ -11,11 +11,11 @@ Python, Rust, or conda environment in sight.
 ```julia
 using Bop
 
-tok = Tokenizer("tokenizer.json")            # or Bop.from_pretrained("Qwen/Qwen3-0.6B")
+tok = Tokenizer("tokenizer.json")       # or Bop.from_pretrained("Qwen/Qwen3-0.6B")
 enc = encode(tok, "Hello, world!")
-enc.ids                                      # 0-based ids, exactly as HF
-enc.tokens                                   # token strings, computed on demand
-decode(tok, enc.ids)                         # "Hello, world!"
+enc.ids                                 # 0-based ids, exactly as HF
+enc.tokens                              # token strings, computed on demand
+decode(tok, enc.ids)                    # "Hello, world!"
 ```
 
 This covers the tokenizers used by essentially every current open-weights
@@ -53,8 +53,8 @@ disagree (PCRE2 still counts U+180E as whitespace; Oniguruma stopped in
 Unicode 6.3), Bop rewrites patterns at load so HF behavior wins.
 
 Fixtures regenerate with `uv run --with tokenizers python3
-scripts/gen_fixtures.py`; the fuzz harness is `scripts/gen_fuzz.py` +
-`scripts/run_fuzz.jl`.
+test/scripts/gen_fixtures.py`; the fuzz harness is `test/scripts/gen_fuzz.py` +
+`test/scripts/run_fuzz.jl`.
 
 ## Speed
 

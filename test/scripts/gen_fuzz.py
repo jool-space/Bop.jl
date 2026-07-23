@@ -1,9 +1,9 @@
 # Differential fuzz generator: random strings drawn from adversarial
 # character pools (including the unicode edge-codepoint zoo that caught the
 # U+180E PCRE/oniguruma divergence), encoded with HF tokenizers as oracle.
-# Writes test/fuzz.json (gitignored); compare with scripts/run_fuzz.jl:
-#   uv run --with tokenizers python3 scripts/gen_fuzz.py [seed] [count]
-#   julia --project scripts/run_fuzz.jl
+# Writes test/fuzz.json (gitignored); compare with test/scripts/run_fuzz.jl:
+#   uv run --with tokenizers python3 test/scripts/gen_fuzz.py [seed] [count]
+#   julia --project test/scripts/run_fuzz.jl
 import glob
 import json
 import os

@@ -206,8 +206,8 @@ function from_gguf(md::AbstractDict)
         nothing
     end
 
-    return Tokenizer(bpe, normalizer, splits, false, spec.use_regex,
-        added, build_added_re(added), id2added, template)
+    return Tokenizer(bpe, normalizer, nothing, splits, false, spec.use_regex,
+        added, build_added_matcher(added), id2added, template, nothing)
 end
 
 from_gguf(path::AbstractString) = from_gguf(gguf_metadata(path))

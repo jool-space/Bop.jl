@@ -16,6 +16,10 @@ const ASSET_REPOS = Dict(
     "glm-4.5-air" => "zai-org/GLM-4.5-Air",
     "olmo-2-1124-7b" => "allenai/OLMo-2-1124-7B",
     "smollm2-1.7b" => "HuggingFaceTB/SmolLM2-1.7B",
+    "tinyllama-1.1b" => "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "phi-3-mini-4k" => "microsoft/Phi-3-mini-4k-instruct",
+    "mistral-7b-v0.2" => "mistralai/Mistral-7B-Instruct-v0.2",
+    "gemma-3-1b" => "unsloth/gemma-3-1b-it",
 )
 
 function ensure_assets(dir::AbstractString)

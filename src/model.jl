@@ -14,10 +14,19 @@ struct BPE
     byte_id::Vector{Int32} # input byte → base token id
     pairs::Dict{UInt64,Tuple{Int32,Int32}} # packed pair → (rank, merged id)
     ignore_merges::Bool
+    # Char mode (sentencepiece-converted files, `byte_fallback`/`unk_token`):
+    # symbols start as chars looked up in `char_ids`; unknown chars fall back
+    # to `<0xXX>` byte tokens (`byte_fb`) or the unk id.
+    charmode::Bool
+    char_ids::Dict{Char,Int32}
+    byte_fb::Vector{Int32} # 256 entries, -1 where the vocab has no <0xXX>
+    unk::Int32             # -1 if no unk_token
+    fuse_unk::Bool
 end
 
 const RANK_NONE = typemax(Int32)
 const CACHE_MAX = 1 << 20
+const MAX_CACHED_PIECE = 256 # bytes; un-pretokenized segments can be huge
 
 const PieceCache = Dict{String,Vector{Int32}}
 
@@ -48,15 +57,60 @@ function bpe!(out::Vector{Int}, m::BPE, piece::AbstractString, cache::PieceCache
     cached = get(cache, piece, nothing)
     cached !== nothing && return append!(out, cached)
 
-    n = ncodeunits(piece)
-    ids = Vector{Int32}(undef, n)
+    ids = m.charmode ? char_ids_of(m, piece) : byte_ids_of(m, piece)
+    merge_ids!(m, ids)
+    if length(cache) < CACHE_MAX && ncodeunits(piece) <= MAX_CACHED_PIECE
+        cache[piece] = ids
+    end
+    return append!(out, ids)
+end
+
+function byte_ids_of(m::BPE, piece::AbstractString)
+    ids = Vector{Int32}(undef, ncodeunits(piece))
     for (i, b) in enumerate(codeunits(piece))
         id = @inbounds m.byte_id[b+1]
         id < 0 && error("Bop: byte 0x$(string(b, base=16)) has no vocab token")
         ids[i] = id
     end
+    return ids
+end
+
+# Faithful to HF's merge_word: per char, vocab lookup, then <0xXX> byte
+# fallback (only if every byte token exists), then unk (fused or not).
+function char_ids_of(m::BPE, piece::AbstractString)
+    ids = Int32[]
+    sizehint!(ids, ncodeunits(piece))
+    pending_unk = false
+    flush!() = (pending_unk && push!(ids, m.unk); pending_unk = false)
+    for c in piece
+        id = get(m.char_ids, c, Int32(-1))
+        if id >= 0
+            flush!()
+            push!(ids, id)
+            continue
+        end
+        nb = ncodeunits(c)
+        cbuf = codeunits(string(c))
+        if all(b -> m.byte_fb[b+1] >= 0, cbuf)
+            flush!()
+            for b in cbuf
+                push!(ids, m.byte_fb[b+1])
+            end
+        elseif m.unk >= 0
+            (pending_unk && !m.fuse_unk) && push!(ids, m.unk)
+            pending_unk = true
+        end # no unk token: the char is dropped, as HF does
+    end
+    flush!()
+    return ids
+end
+
+"Run the BPE merge loop over `ids` in place."
+function merge_ids!(m::BPE, ids::Vector{Int32})
+    n = length(ids)
+    n <= 1 && return ids
     # ranks[i] caches (rank, merged) for the pair (ids[i], ids[i+1]).
-    ranks = Vector{Tuple{Int32,Int32}}(undef, max(n - 1, 0))
+    ranks = Vector{Tuple{Int32,Int32}}(undef, n - 1)
     for i in 1:n-1
         ranks[i] = pair_rank(m, ids[i], ids[i+1])
     end
@@ -74,6 +128,5 @@ function bpe!(out::Vector{Int}, m::BPE, piece::AbstractString, cache::PieceCache
         at <= length(ranks) && (ranks[at] = pair_rank(m, ids[at], ids[at+1]))
         at > 1 && (ranks[at-1] = pair_rank(m, ids[at-1], ids[at]))
     end
-    length(cache) < CACHE_MAX && (cache[piece] = ids)
-    return append!(out, ids)
+    return ids
 end

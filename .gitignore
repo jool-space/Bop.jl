@@ -4,3 +4,5 @@
 /Manifest*.toml
 /test/assets/
 /test/fuzz.json
+/docs/Manifest*.toml
+/docs/build/

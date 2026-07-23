@@ -1,12 +1,16 @@
-# The BPE model. Merging runs in id space: byte-level chars map to base
-# token ids up front (`char_id`), and `pairs` maps a packed (left, right)
-# id pair to (rank, merged id) — one integer hash per probe, no string
-# concatenation in the merge loop. All tables derive mechanically from the
-# tokenizer file; nothing here knows which tokenizer it is.
+# The BPE model. Merging runs in id space over raw bytes: `byte_id` maps
+# each input byte to its base token id (the byte-level indirection is baked
+# into the table at load), and `pairs` maps a packed (left, right) id pair
+# to (rank, merged id) — one integer hash per probe, no strings in the
+# merge loop. `rawvocab` keys whole-piece lookups (ignore_merges) by raw
+# bytes; pieces are probed as zero-copy views and only copied into the
+# cache on insertion. All tables derive mechanically from the tokenizer
+# file; nothing here knows which tokenizer it is.
 struct BPE
     vocab::Dict{String,Int}
     id2tok::Dict{Int,String}
-    char_id::Vector{Int32} # byte-level char codepoint → base token id
+    rawvocab::Dict{String,Int} # raw bytes → id (byte-level-pure tokens only)
+    byte_id::Vector{Int32} # input byte → base token id
     pairs::Dict{UInt64,Tuple{Int32,Int32}} # packed pair → (rank, merged id)
     ignore_merges::Bool
     cache::Dict{String,Vector{Int32}}
@@ -21,10 +25,10 @@ pair_key(l::Int32, r::Int32) = UInt64(reinterpret(UInt32, l)) << 32 | UInt64(rei
     return get(m.pairs, pair_key(l, r), (RANK_NONE, Int32(0)))
 end
 
-"Tokenize one byte-level piece, appending token ids to `out`."
-function bpe!(out::Vector{Int}, m::BPE, piece::String)
+"Tokenize one piece (raw text bytes), appending token ids to `out`."
+function bpe!(out::Vector{Int}, m::BPE, piece::AbstractString)
     if m.ignore_merges
-        id = get(m.vocab, piece, -1)
+        id = get(m.rawvocab, piece, -1)
         if id >= 0
             push!(out, id)
             return out
@@ -33,12 +37,12 @@ function bpe!(out::Vector{Int}, m::BPE, piece::String)
     cached = get(m.cache, piece, nothing)
     cached !== nothing && return append!(out, cached)
 
-    ids = Vector{Int32}(undef, length(piece))
-    n = 0
-    for c in piece
-        id = m.char_id[UInt32(c)+1]
-        id < 0 && error("Bop: byte-level char $(repr(c)) has no vocab token")
-        ids[n+=1] = id
+    n = ncodeunits(piece)
+    ids = Vector{Int32}(undef, n)
+    for (i, b) in enumerate(codeunits(piece))
+        id = @inbounds m.byte_id[b+1]
+        id < 0 && error("Bop: byte 0x$(string(b, base=16)) has no vocab token")
+        ids[i] = id
     end
     # ranks[i] caches (rank, merged) for the pair (ids[i], ids[i+1]).
     ranks = Vector{Tuple{Int32,Int32}}(undef, max(n - 1, 0))

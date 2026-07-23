@@ -74,7 +74,7 @@ function token_string(t::Tokenizer, id::Int)
 end
 
 "Split one piece by `sp`, appending surviving subpieces to `out`."
-function split_piece!(out::Vector{SubString{String}}, sp::Splitter, piece::SubString{String})
+function split_piece!(out::Vector{SubString{S}}, sp::Splitter, piece::SubString{S}) where {S}
     pos = firstindex(piece)
     for m in eachmatch(sp.re, piece)
         isempty(m.match) && continue
@@ -90,9 +90,10 @@ end
 
 function encode_segment!(ids::Vector{Int}, t::Tokenizer, seg::AbstractString)
     isempty(seg) && return ids
-    s = t.normalizer === nothing ? String(seg) : t.normalizer(String(seg))::String
-    pieces = SubString{String}[SubString(s)]
-    next = SubString{String}[]
+    s = t.normalizer === nothing ? seg : t.normalizer(String(seg))::String
+    sub = SubString(s)
+    pieces = typeof(sub)[sub]
+    next = typeof(sub)[]
     for sp in t.splits
         for p in pieces
             split_piece!(next, sp, p)
@@ -101,14 +102,22 @@ function encode_segment!(ids::Vector{Int}, t::Tokenizer, seg::AbstractString)
     end
     # ByteLevel stage, faithful to HF: per piece, prefix space, then regex.
     for p in pieces
-        q = t.add_prefix_space && !startswith(p, ' ') ? SubString(" " * p) : p
-        if t.bytelevel_regex
-            for sub in split_piece!(empty!(next), GPT2_SPLIT, q)
-                bpe!(ids, t.model, to_bytelevel(sub))
-            end
+        if t.add_prefix_space && !startswith(p, ' ')
+            bytelevel_stage!(ids, t, SubString(" " * p))
         else
-            bpe!(ids, t.model, to_bytelevel(q))
+            bytelevel_stage!(ids, t, p)
         end
+    end
+    return ids
+end
+
+function bytelevel_stage!(ids::Vector{Int}, t::Tokenizer, q::SubString)
+    if t.bytelevel_regex
+        for sub in split_piece!(typeof(q)[], GPT2_SPLIT, q)
+            bpe!(ids, t.model, sub)
+        end
+    else
+        bpe!(ids, t.model, q)
     end
     return ids
 end
@@ -119,7 +128,7 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
     if t.added_re === nothing
         encode_segment!(ids, t, text)
     else
-        s = String(text)
+        s = text
         pos = firstindex(s)
         for m in eachmatch(t.added_re, s)
             if m.offset > pos
@@ -152,6 +161,9 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
     end
     return Encoding(t, ids, overrides)
 end
+
+"Encode a raw byte buffer (interpreted as UTF-8) without copying it."
+encode(t::Tokenizer, bytes::AbstractVector{UInt8}; kw...) = encode(t, StringView(bytes); kw...)
 
 function decode(t::Tokenizer, ids::AbstractVector{<:Integer}; skip_special_tokens::Bool = true)
     io = IOBuffer()

@@ -16,6 +16,15 @@ ensure_assets(ASSETS)
         @test String(take!(io)) == s
     end
 
+    @testset "bytes input" begin
+        tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
+        fx = JSON3.read(read(joinpath(FIXTURES, "qwen3.5.json"), String))
+        for case in fx.cases
+            text = String(case.text)
+            @test encode(tok, Vector{UInt8}(codeunits(text))).ids == case.ids
+        end
+    end
+
     @testset "gguf" begin
         # PRE_TOKENIZERS entries must match the paired tokenizer.json —
         # guards against transcription drift in the name table.

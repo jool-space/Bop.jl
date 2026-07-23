@@ -148,18 +148,32 @@ end
 # Assemble a BPE from vocab + merges. Merge entries may be "a b" strings or
 # (a, b) pairs. Shared by the tokenizer.json and GGUF loaders.
 function build_bpe(vocab::Dict{String,Int}, id2tok::Dict{Int,String}, merges, ignore_merges::Bool)
-    # Byte-level alphabet → base token ids. Vocabs may omit chars for bytes
-    # that cannot occur in valid UTF-8 (ModernBERT does); those entries stay
-    # -1 and error at encode time if ever hit.
-    char_id = fill(Int32(-1), 0x180)
+    # Input byte → base token id (via the byte-level alphabet). Vocabs may
+    # omit chars for bytes that cannot occur in valid UTF-8 (ModernBERT
+    # does); those entries stay -1 and error at encode time if ever hit.
+    byte_id = fill(Int32(-1), 256)
     hits = 0
     for b in 0x00:0xff
-        c = BYTE2CHAR[b+1]
-        id = get(vocab, string(c), -1)
+        id = get(vocab, string(BYTE2CHAR[b+1]), -1)
         id >= 0 && (hits += 1)
-        char_id[UInt32(c)+1] = id
+        byte_id[b+1] = id
     end
     hits > 128 || error("Bop: vocab lacks the byte-level alphabet — not a byte-level BPE tokenizer?")
+
+    # Raw-bytes → id for whole-piece lookups (ignore_merges). Only tokens
+    # whose chars are all in the byte-level alphabet are reachable as
+    # pretoken pieces, so only those enter the table.
+    rawvocab = Dict{String,Int}()
+    if ignore_merges
+        sizehint!(rawvocab, length(vocab))
+        io = IOBuffer()
+        for (tok, id) in vocab
+            all(c -> haskey(CHAR2BYTE, c), tok) || continue
+            truncate(io, 0)
+            write_from_bytelevel!(io, tok)
+            rawvocab[String(take!(io))] = id
+        end
+    end
 
     pair_tbl = Dict{UInt64,Tuple{Int32,Int32}}()
     sizehint!(pair_tbl, length(merges))
@@ -179,7 +193,7 @@ function build_bpe(vocab::Dict{String,Int}, id2tok::Dict{Int,String}, merges, ig
         get!(pair_tbl, pair_key(Int32(la), Int32(lb)), (Int32(i), Int32(merged)))
     end
 
-    return BPE(vocab, id2tok, char_id, pair_tbl, ignore_merges, Dict{String,Vector{Int32}}())
+    return BPE(vocab, id2tok, rawvocab, byte_id, pair_tbl, ignore_merges, Dict{String,Vector{Int32}}())
 end
 
 # Extract the single-sequence template from the post-processor, if any.

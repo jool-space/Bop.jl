@@ -1,6 +1,7 @@
 module Bop
 
 using JSON3
+using StringViews
 using Unicode
 
 export Tokenizer, encode, decode

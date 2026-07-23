@@ -52,6 +52,13 @@ randomized fuzzing: ids, token strings (incl. lstrip/rstrip surface
 forms), and both decode modes match exactly. Fixtures are
 regenerated with `uv run --with tokenizers python3 scripts/gen_fixtures.py`.
 
-Throughput is ~3× HF sequential encode single-threaded, and scales with
-Julia threads (one `Tokenizer` per thread; the BPE cache is not
-thread-safe).
+Throughput (Qwen3.5, 6 MB mixed text): ~12.5 MB/s single-threaded (~4×
+HF sequential), ~55 MB/s on 8 threads (~4× HF's fully parallel
+`encode_batch`; one `Tokenizer` per thread — the BPE cache is not
+thread-safe). Prompt-scale encode is ~3.5 µs. `encode` also accepts raw
+`AbstractVector{UInt8}` buffers (e.g. mmap) copy-free via StringViews.
+
+GGUF: `Bop.from_gguf(path_or_metadata)` loads `gpt2`-model (byte-level
+BPE) tokenizers straight from GGUF metadata — the pre-tokenizer name →
+pattern table (`Bop.PRE_TOKENIZERS`) covers qwen35/qwen2/llama-bpe/gpt-2,
+each pinned by tests to its family's tokenizer.json.

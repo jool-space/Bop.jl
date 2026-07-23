@@ -128,6 +128,13 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
     if t.added_re === nothing
         encode_segment!(ids, t, text)
     else
+        # Added tokens are extracted in one pass over the raw text. Known
+        # divergences from HF, both unobserved across the differential
+        # corpus: HF matches `normalized: true` added tokens after
+        # normalization (moot while normalizers are NFC-or-nothing and
+        # added contents are NFC-stable ASCII); and the alternation is
+        # O(alternatives) per position where HF uses Aho-Corasick — fine
+        # at prompt scale even for Mistral-Nemo's 1000 added tokens.
         s = text
         pos = firstindex(s)
         for m in eachmatch(t.added_re, s)

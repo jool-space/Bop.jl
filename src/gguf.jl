@@ -127,6 +127,11 @@ function from_gguf(md::AbstractDict)
         s::String -> Unicode.normalize(s, form)
     end
 
+    # llama.cpp's default for a missing add_bos_token key varies by model
+    # lineage; we default to false, which is correct for every family in
+    # PRE_TOKENIZERS whose GGUFs were checked (they set the key explicitly).
+    # A family relying on an implicit-true default would need its PreSpec
+    # to say so — caught by the paired-json differential test when added.
     bos = get(md, "tokenizer.ggml.bos_token_id", nothing)
     template = if Bool(get(md, "tokenizer.ggml.add_bos_token", false)) && bos !== nothing
         [Int(bos), -1]

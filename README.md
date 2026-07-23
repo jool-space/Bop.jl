@@ -6,7 +6,7 @@
 [![Coverage](https://codecov.io/gh/jool-space/Bop.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jool-space/Bop.jl)
 
 Pure-Julia tokenizer for language models. Loads HuggingFace `tokenizer.json`
-files directly — no Python, no Rust, no dependencies beyond JSON3.
+files directly — no Python, no Rust, no dependencies beyond JSON3 and StringViews.
 
 ```julia
 using Bop
@@ -50,7 +50,8 @@ of adversarial cases (unicode whitespace zoo, astral letters, contraction
 casing, embedded special tokens, format chars, number classes, …) plus
 randomized fuzzing: ids, token strings (incl. lstrip/rstrip surface
 forms), and both decode modes match exactly. Fixtures are
-regenerated with `uv run --with tokenizers python3 scripts/gen_fixtures.py`.
+regenerated with `uv run --with tokenizers python3 scripts/gen_fixtures.py`;
+randomized differential fuzzing via `scripts/gen_fuzz.py` + `scripts/run_fuzz.jl`.
 
 Throughput (Qwen3.5, 6 MB mixed text): ~12.5 MB/s single-threaded (~4×
 HF sequential), ~55 MB/s on 8 threads (~4× HF's fully parallel

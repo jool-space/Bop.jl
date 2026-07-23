@@ -87,8 +87,8 @@ function onigify(pat::AbstractString)
 end
 
 function parse_pattern(p)
-    haskey(p, :Regex) && return Regex(onigify(String(p.Regex)))
-    haskey(p, :String) && return Regex(re_escape(String(p.String)))
+    haskey(p, "Regex") && return Regex(onigify(String(p.Regex)))
+    haskey(p, "String") && return Regex(re_escape(String(p.String)))
     error("Bop: unsupported Split pattern $(p)")
 end
 
@@ -104,15 +104,15 @@ function parse_pretokenizer(pt)
     for x in items
         ty = String(x.type)
         if ty == "Split"
-            invert = Bool(get(x, :invert, false))
+            invert = Bool(get(x, "invert", false))
             b = String(x.behavior)
             keep = b == "Isolated" ? :both :
                    b == "Removed" ? (invert ? :matches : :gaps) :
                    error("Bop: Split behavior $(repr(b)) unsupported")
             push!(splits, Splitter(parse_pattern(x.pattern), keep))
         elseif ty == "ByteLevel"
-            aps = Bool(get(x, :add_prefix_space, false))
-            use_regex = Bool(get(x, :use_regex, true))
+            aps = Bool(get(x, "add_prefix_space", false))
+            use_regex = Bool(get(x, "use_regex", true))
         else
             error("Bop: unsupported pre_tokenizer type $(repr(ty))")
         end
@@ -121,13 +121,13 @@ function parse_pretokenizer(pt)
 end
 
 function parse_model(m)
-    ty = String(get(m, :type, "BPE"))
+    ty = String(get(m, "type", "BPE"))
     ty == "BPE" || error("Bop: unsupported model type $(repr(ty)) (byte-level BPE only)")
-    Bool(get(m, :byte_fallback, false)) &&
+    Bool(get(m, "byte_fallback", false)) &&
         error("Bop: byte_fallback models (sentencepiece-converted) not yet supported")
-    Bool(get(m, :fuse_unk, false)) && error("Bop: fuse_unk unsupported")
-    something(get(m, :dropout, nothing), 0.0) == 0.0 || error("Bop: BPE dropout unsupported")
-    for k in (:continuing_subword_prefix, :end_of_word_suffix)
+    Bool(get(m, "fuse_unk", false)) && error("Bop: fuse_unk unsupported")
+    something(get(m, "dropout", nothing), 0.0) == 0.0 || error("Bop: BPE dropout unsupported")
+    for k in ("continuing_subword_prefix", "end_of_word_suffix")
         isempty(something(get(m, k, nothing), "")) || error("Bop: $(k) unsupported")
     end
 
@@ -142,7 +142,7 @@ function parse_model(m)
         id2tok[id] = tok
     end
 
-    return build_bpe(vocab, id2tok, m.merges, Bool(get(m, :ignore_merges, false)))
+    return build_bpe(vocab, id2tok, m.merges, Bool(get(m, "ignore_merges", false)))
 end
 
 # Assemble a BPE from vocab + merges. Merge entries may be "a b" strings or
@@ -212,11 +212,11 @@ function parse_template(pp, added::Dict{String,AddedToken}, vocab::Dict{String,I
     elseif ty == "TemplateProcessing"
         tmpl = Int[]
         for e in pp.single
-            if haskey(e, :Sequence)
+            if haskey(e, "Sequence")
                 String(e.Sequence.id) == "A" && push!(tmpl, -1)
-            elseif haskey(e, :SpecialToken)
+            elseif haskey(e, "SpecialToken")
                 name = String(e.SpecialToken.id)
-                st = get(pp.special_tokens, Symbol(name), nothing)
+                st = get(pp.special_tokens, name, nothing)
                 if st !== nothing
                     append!(tmpl, Int.(st.ids))
                 else
@@ -251,29 +251,48 @@ end
 
 function from_json(j)
     model = parse_model(j.model)
-    normalizer = parse_normalizer(get(j, :normalizer, nothing))
-    splits, aps, use_regex = parse_pretokenizer(get(j, :pre_tokenizer, nothing))
-    check_decoder(get(j, :decoder, nothing))
+    normalizer = parse_normalizer(get(j, "normalizer", nothing))
+    splits, aps, use_regex = parse_pretokenizer(get(j, "pre_tokenizer", nothing))
+    check_decoder(get(j, "decoder", nothing))
 
     added = Dict{String,AddedToken}()
     id2added = Dict{Int,AddedToken}()
-    for a in get(j, :added_tokens, ())
-        Bool(get(a, :single_word, false)) && error("Bop: added token single_word unsupported")
+    for a in get(j, "added_tokens", ())
+        Bool(get(a, "single_word", false)) && error("Bop: added token single_word unsupported")
         t = AddedToken(Int(a.id), String(a.content), Bool(a.special),
-            Bool(get(a, :lstrip, false)), Bool(get(a, :rstrip, false)))
+            Bool(get(a, "lstrip", false)), Bool(get(a, "rstrip", false)))
         isempty(t.content) && continue
         added[t.content] = t
         id2added[t.id] = t
     end
     added_re = build_added_re(added)
 
-    template = parse_template(get(j, :post_processor, nothing), added, model.vocab)
+    template = parse_template(get(j, "post_processor", nothing), added, model.vocab)
 
     return Tokenizer(model, normalizer, splits, aps, use_regex,
         added, added_re, id2added, template)
 end
 
 "Load a tokenizer from a HF `tokenizer.json` file."
-from_file(path::AbstractString) = from_json(JSON3.read(read(path, String)))
+from_file(path::AbstractString) = from_json(JSON.parse(read(path, String)))
 
 Tokenizer(path::AbstractString) = from_file(path)
+
+"""
+    from_pretrained(repo; revision = "main")
+
+Load a tokenizer from a HuggingFace Hub repo's `tokenizer.json` (e.g.
+`from_pretrained("Qwen/Qwen3-0.6B")`). Sends `ENV["HF_TOKEN"]` as a bearer
+token if set (needed for gated repos). No local caching.
+"""
+function from_pretrained(repo::AbstractString; revision::AbstractString = "main")
+    url = "https://huggingface.co/$repo/resolve/$revision/tokenizer.json"
+    headers = haskey(ENV, "HF_TOKEN") ?
+              ["Authorization" => "Bearer $(ENV["HF_TOKEN"])"] : Pair{String,String}[]
+    io = IOBuffer()
+    Downloads.download(url, io; headers)
+    return from_json(JSON.parse(String(take!(io))))
+end
+
+encode_batch(t::Tokenizer, texts; kw...) = [encode(t, x; kw...) for x in texts]
+decode_batch(t::Tokenizer, batches; kw...) = [decode(t, ids; kw...) for ids in batches]

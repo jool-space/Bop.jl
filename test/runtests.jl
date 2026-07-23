@@ -1,5 +1,5 @@
 using Bop
-using JSON3
+using JSON
 using Test
 
 const FIXTURES = joinpath(@__DIR__, "fixtures")
@@ -39,11 +39,19 @@ ensure_assets(ASSETS)
 
     @testset "bytes input" begin
         tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
-        fx = JSON3.read(read(joinpath(FIXTURES, "qwen3.5.json"), String))
+        fx = JSON.parse(read(joinpath(FIXTURES, "qwen3.5.json"), String))
         for case in fx.cases
             text = String(case.text)
             @test encode(tok, Vector{UInt8}(codeunits(text))).ids == case.ids
         end
+    end
+
+    @testset "batch" begin
+        tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
+        texts = ["hello", "world <|im_end|>", ""]
+        encs = Bop.encode_batch(tok, texts)
+        @test [e.ids for e in encs] == [encode(tok, t).ids for t in texts]
+        @test Bop.decode_batch(tok, [e.ids for e in encs]; skip_special_tokens = false) == texts
     end
 
     @testset "gguf" begin
@@ -51,7 +59,7 @@ ensure_assets(ASSETS)
         # guards against transcription drift in the name table.
         for (pre, asset) in [("qwen35", "qwen3.5"), ("qwen2", "qwen2.5-0.5b-instruct"),
                              ("llama-bpe", "llama-3.2-1b")]
-            j = JSON3.read(read(joinpath(ASSETS, asset, "tokenizer.json"), String))
+            j = JSON.parse(read(joinpath(ASSETS, asset, "tokenizer.json"), String))
             items = j.pre_tokenizer.pretokenizers
             patterns = [String(x.pattern.Regex) for x in items if String(x.type) == "Split"]
             @test Bop.PRE_TOKENIZERS[pre].patterns == patterns
@@ -60,7 +68,7 @@ ensure_assets(ASSETS)
         # (and hence with HF) on every fixture case.
         gg = Bop.from_gguf(joinpath(ASSETS, "qwen3.5", "metadata.gguf"))
         js = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
-        fx = JSON3.read(read(joinpath(FIXTURES, "qwen3.5.json"), String))
+        fx = JSON.parse(read(joinpath(FIXTURES, "qwen3.5.json"), String))
         for case in fx.cases
             text = String(case.text)
             enc = encode(gg, text)
@@ -73,7 +81,7 @@ ensure_assets(ASSETS)
 
     for fixture in sort(readdir(FIXTURES))
         name = replace(fixture, ".json" => "")
-        fx = JSON3.read(read(joinpath(FIXTURES, fixture), String))
+        fx = JSON.parse(read(joinpath(FIXTURES, fixture), String))
         tok = Bop.from_file(joinpath(ASSETS, name, "tokenizer.json"))
         @testset "$name" begin
             for case in fx.cases

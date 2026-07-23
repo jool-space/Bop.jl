@@ -1,6 +1,7 @@
 module Bop
 
-using JSON3
+using Downloads
+using JSON
 using StringViews
 using Unicode
 

@@ -1,7 +1,7 @@
 # Compare Bop against the HF oracle produced by scripts/gen_fuzz.py.
-using Bop, JSON3
+using Bop, JSON
 
-fuzz = JSON3.read(read(joinpath(@__DIR__, "..", "test", "fuzz.json"), String))
+fuzz = JSON.parse(read(joinpath(@__DIR__, "..", "test", "fuzz.json"), String))
 total = 0
 for (name, cases) in pairs(fuzz)
     tok = Bop.from_file(joinpath(@__DIR__, "..", "test", "assets", String(name), "tokenizer.json"))

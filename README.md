@@ -5,61 +5,77 @@
 [![Build Status](https://github.com/jool-space/Bop.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jool-space/Bop.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/jool-space/Bop.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jool-space/Bop.jl)
 
-Pure-Julia tokenizer for language models. Loads HuggingFace `tokenizer.json`
-files directly — no Python, no Rust, no dependencies beyond JSON3 and StringViews.
+Tokenize text for language models in pure Julia. Bop reads the same
+`tokenizer.json` files that HuggingFace models ship — or the metadata
+inside a GGUF file — and produces exactly the same token ids, with no
+Python, Rust, or conda environment in sight.
 
 ```julia
 using Bop
 
-tok = Tokenizer("tokenizer.json")
+tok = Tokenizer("tokenizer.json")            # or Bop.from_pretrained("Qwen/Qwen3-0.6B")
 enc = encode(tok, "Hello, world!")
-enc.ids           # Vector{Int} (0-based ids, as HF)
-enc.tokens        # materialized lazily
-decode(tok, enc.ids)
-encode(tok, text; add_special_tokens = false)
-decode(tok, ids; skip_special_tokens = false)
+enc.ids                                      # 0-based ids, exactly as HF
+enc.tokens                                   # token strings, computed on demand
+decode(tok, enc.ids)                         # "Hello, world!"
 ```
 
-## Scope
+This covers the tokenizers used by essentially every current open-weights
+LM: the GPT-2/GPT-4 lineage, Qwen, Llama 3/4, DeepSeek, Mistral (Tekken),
+GLM, gpt-oss, Phi-4, OLMo, and friends — anything byte-level BPE. The main
+exception is the Gemma family (sentencepiece), which is not yet supported;
+unsupported files fail loudly at load rather than mis-tokenizing.
 
-Byte-level BPE — the tokenizer family used by essentially every current
-open-weights LM (GPT-2/4 lineage, Qwen, Llama 3/4, DeepSeek, and friends).
-Supported `tokenizer.json` components:
+Some things that come for free:
 
-- model: `BPE` (incl. `ignore_merges`, both merges formats)
-- normalizers: `NFC`/`NFD`/`NFKC`/`NFKD`, `Sequence`
-- pre-tokenizers: `Split` (Isolated/Removed, `invert`, chained), `ByteLevel`
-  (incl. `add_prefix_space` and the built-in GPT-2 `use_regex` pattern)
-- post-processors: `TemplateProcessing` (single-sequence), `ByteLevel`
-- added/special tokens incl. `lstrip`/`rstrip`, `ByteLevel` decoder
+- **GGUF**: `Bop.from_gguf("model.gguf")` builds the tokenizer straight
+  from GGUF metadata — no `tokenizer.json` sidecar needed. Eleven
+  pre-tokenizer families are covered, each verified against its HF
+  counterpart.
+- **Threads**: encoding is plain Julia, so it parallelizes with
+  `Threads.@spawn` — no GIL. Use one `Tokenizer` per thread (the internal
+  cache is not thread-safe).
+- **Raw bytes**: `encode` accepts `AbstractVector{UInt8}` (an mmap'd
+  corpus, say) without copying.
+- **Batches**: `Bop.encode_batch` / `Bop.decode_batch`, and
+  `encode(tok, text; add_special_tokens = false)` /
+  `decode(tok, ids; skip_special_tokens = false)` behave as in HF.
 
-Patterns are rewritten at load to match Oniguruma's character classes
-(HF's regex engine) where PCRE2 disagrees — e.g. U+180E, whitespace in
-PCRE2 but not in Oniguruma since Unicode 6.3.
+## Why trust it
 
-Anything outside this errors loudly at load — nothing mis-tokenizes
-silently. Sentencepiece-converted files (`byte_fallback`, e.g. Gemma,
-Llama 2) are not yet supported.
+Matching HF exactly is the whole point, so Bop is tested differentially:
+every release is checked against the Rust `tokenizers` library over twelve
+real tokenizers (GPT-2, Qwen 2.5/3/3.5, Llama 3.2, DeepSeek-V3, gpt-oss,
+Phi-4, Mistral-Nemo, GLM-4.5, OLMo-2, ModernBERT) on a battery of
+adversarial inputs — unicode whitespace exotica, astral-plane letters,
+contraction casing, special tokens glued to whitespace — plus thousands of
+randomized fuzz cases. Ids, token strings, and both decode modes match
+exactly. Where the regex engines beneath the two implementations genuinely
+disagree (PCRE2 still counts U+180E as whitespace; Oniguruma stopped in
+Unicode 6.3), Bop rewrites patterns at load so HF behavior wins.
 
-## Correctness
+Fixtures regenerate with `uv run --with tokenizers python3
+scripts/gen_fixtures.py`; the fuzz harness is `scripts/gen_fuzz.py` +
+`scripts/run_fuzz.jl`.
 
-Differentially tested against HF `tokenizers` (the Rust library) over
-twelve tokenizers — GPT-2, Qwen 2.5 / 3 / 3.5, DeepSeek-V3, Llama 3.2,
-GPT-OSS, Phi-4, Mistral-Nemo, GLM-4.5, OLMo-2, ModernBERT — on a battery
-of adversarial cases (unicode whitespace zoo, astral letters, contraction
-casing, embedded special tokens, format chars, number classes, …) plus
-randomized fuzzing: ids, token strings (incl. lstrip/rstrip surface
-forms), and both decode modes match exactly. Fixtures are
-regenerated with `uv run --with tokenizers python3 scripts/gen_fixtures.py`;
-randomized differential fuzzing via `scripts/gen_fuzz.py` + `scripts/run_fuzz.jl`.
+## Speed
 
-Throughput (Qwen3.5, 6 MB mixed text): ~12.5 MB/s single-threaded (~4×
-HF sequential), ~55 MB/s on 8 threads (~4× HF's fully parallel
-`encode_batch`; one `Tokenizer` per thread — the BPE cache is not
-thread-safe). Prompt-scale encode is ~3.5 µs. `encode` also accepts raw
-`AbstractVector{UInt8}` buffers (e.g. mmap) copy-free via StringViews.
+Fast enough that tokenization stops being a consideration: a chat prompt
+encodes in ~3.5 µs, and bulk text runs at ~12.5 MB/s single-threaded
+(about 4× the HF Python stack) or ~55 MB/s on 8 threads — faster than
+HF's fully parallel `encode_batch`. Loading a 13 MB tokenizer.json takes
+~0.3 s.
 
-GGUF: `Bop.from_gguf(path_or_metadata)` loads `gpt2`-model (byte-level
-BPE) tokenizers straight from GGUF metadata — the pre-tokenizer name →
-pattern table (`Bop.PRE_TOKENIZERS`) covers qwen35/qwen2/llama-bpe/gpt-2,
-each pinned by tests to its family's tokenizer.json.
+## Fine print
+
+Supported `tokenizer.json` components: BPE models (incl. `ignore_merges`,
+both merges formats), NFC-family normalizers, chained `Split`
+pre-tokenizers (Isolated/Removed, `invert`), `ByteLevel` (incl.
+`add_prefix_space` and the built-in GPT-2 pattern), single-sequence
+`TemplateProcessing`, added/special tokens incl. `lstrip`/`rstrip`, and
+the `ByteLevel` decoder. Offsets and word ids are deliberately out of
+scope. One GGUF caveat: the format cannot carry added-token
+`lstrip`/`rstrip` flags (Phi-4 uses them), so GGUF-loaded tokenizers
+treat whitespace next to special tokens the way llama.cpp does, not the
+way HF does — load the `tokenizer.json` if that distinction matters to
+you.

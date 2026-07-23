@@ -110,6 +110,11 @@ function parse_pretokenizer(pt)
                    b == "Removed" ? (invert ? :matches : :gaps) :
                    error("Bop: Split behavior $(repr(b)) unsupported")
             push!(splits, Splitter(parse_pattern(x.pattern), keep))
+        elseif ty == "Digits"
+            # HF splits on Unicode-numeric chars (Nd/Nl/No = \p{N});
+            # individual_digits isolates each one (SmolLM2 does this).
+            pat = Bool(get(x, "individual_digits", false)) ? raw"\p{N}" : raw"\p{N}+"
+            push!(splits, Splitter(Regex(onigify(pat)), :both))
         elseif ty == "ByteLevel"
             aps = Bool(get(x, "add_prefix_space", false))
             use_regex = Bool(get(x, "use_regex", true))

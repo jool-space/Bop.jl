@@ -15,6 +15,7 @@ const ASSET_REPOS = Dict(
     "mistral-nemo-instruct-2407" => "unsloth/Mistral-Nemo-Instruct-2407",
     "glm-4.5-air" => "zai-org/GLM-4.5-Air",
     "olmo-2-1124-7b" => "allenai/OLMo-2-1124-7B",
+    "smollm2-1.7b" => "HuggingFaceTB/SmolLM2-1.7B",
 )
 
 function ensure_assets(dir::AbstractString)

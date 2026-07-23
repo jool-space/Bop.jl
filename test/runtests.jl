@@ -2,6 +2,8 @@ using Bop: Bop, encode, decode
 using JSON
 using Test
 
+using Republic
+
 const FIXTURES = joinpath(@__DIR__, "fixtures")
 const ASSETS = joinpath(@__DIR__, "assets")
 
@@ -13,7 +15,7 @@ ensure_assets(ASSETS)
         for name in (:Tokenizer, :Encoding, :encode, :decode, :encode_batch,
             :decode_batch, :from_file, :from_json, :from_pretrained,
             :from_gguf, :gguf_metadata, :PRE_TOKENIZERS, :PreSpec)
-            @test Base.ispublic(Bop, name)
+            @test Republic.ispublic(Bop, name)
             @test Base.Docs.hasdoc(Bop, name)
         end
     end

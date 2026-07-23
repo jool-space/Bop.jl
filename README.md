@@ -44,7 +44,7 @@ Some things that come for free:
 Matching HF exactly is the whole point, so Bop is tested differentially:
 every release is checked against the Rust `tokenizers` library over twelve
 real tokenizers (GPT-2, Qwen 2.5/3/3.5, Llama 3.2, DeepSeek-V3, gpt-oss,
-Phi-4, Mistral-Nemo, GLM-4.5, OLMo-2, ModernBERT) on a battery of
+Phi-4, Mistral-Nemo, GLM-4.5, OLMo-2, ModernBERT, SmolLM2) on a battery of
 adversarial inputs — unicode whitespace exotica, astral-plane letters,
 contraction casing, special tokens glued to whitespace — plus thousands of
 randomized fuzz cases. Ids, token strings, and both decode modes match
@@ -68,7 +68,7 @@ encodes in ~3.5 µs, and bulk text runs at ~12.5 MB/s single-threaded
 
 Supported `tokenizer.json` components: BPE models (incl. `ignore_merges`,
 both merges formats), NFC-family normalizers, chained `Split`
-pre-tokenizers (Isolated/Removed, `invert`), `ByteLevel` (incl.
+pre-tokenizers (Isolated/Removed, `invert`), `Digits`, `ByteLevel` (incl.
 `add_prefix_space` and the built-in GPT-2 pattern), single-sequence
 `TemplateProcessing`, added/special tokens incl. `lstrip`/`rstrip`, and
 the `ByteLevel` decoder. Offsets and word ids are deliberately out of

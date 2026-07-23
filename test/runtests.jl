@@ -55,14 +55,45 @@ ensure_assets(ASSETS)
     end
 
     @testset "gguf" begin
-        # PRE_TOKENIZERS entries must match the paired tokenizer.json —
-        # guards against transcription drift in the name table.
-        for (pre, asset) in [("qwen35", "qwen3.5"), ("qwen2", "qwen2.5-0.5b-instruct"),
-                             ("llama-bpe", "llama-3.2-1b")]
+        # Every PRE_TOKENIZERS entry must match its paired tokenizer.json —
+        # guards against transcription drift in the name table. Names come
+        # from llama.cpp's converter checksum table ("dbrx" really is what
+        # Phi-4 and OLMo-2 GGUFs carry).
+        for (pre, asset) in [
+            ("qwen35", "qwen3.5"),
+            ("qwen2", "qwen2.5-0.5b-instruct"), ("qwen2", "qwen3-0.6b"),
+            ("llama-bpe", "llama-3.2-1b"),
+            ("glm4", "glm-4.5-air"),
+            ("gpt-4o", "gpt-oss-20b"),
+            ("tekken", "mistral-nemo-instruct-2407"),
+            ("deepseek-v3", "deepseek-v3"), ("joyai-llm", "deepseek-v3"),
+            ("dbrx", "phi-4"), ("dbrx", "olmo-2-1124-7b"),
+            ("modern-bert", "modernbert-base"),
+            ("gpt-2", "gpt2"),
+        ]
             j = JSON.parse(read(joinpath(ASSETS, asset, "tokenizer.json"), String))
-            items = j.pre_tokenizer.pretokenizers
-            patterns = [String(x.pattern.Regex) for x in items if String(x.type) == "Split"]
-            @test Bop.PRE_TOKENIZERS[pre].patterns == patterns
+            pt = j.pre_tokenizer
+            items = String(pt.type) == "Sequence" ? pt.pretokenizers : [pt]
+            splits = Tuple{String,Symbol}[]
+            use_regex = false
+            for x in items
+                if String(x.type) == "Split"
+                    keep = String(x.behavior) == "Isolated" ? :both :
+                           x.invert ? :matches : :gaps
+                    push!(splits, (String(x.pattern.Regex), keep))
+                else
+                    use_regex = Bool(get(x, "use_regex", true))
+                end
+            end
+            nm = get(j, "normalizer", nothing)
+            norm = nm === nothing ? nothing :
+                   String(nm.type) == "Sequence" && isempty(nm.normalizers) ? nothing :
+                   Symbol(String(nm.type))
+            spec = Bop.PRE_TOKENIZERS[pre]
+            @test spec.splits == splits
+            @test spec.use_regex == use_regex
+            @test spec.normalizer == norm
+            @test spec.ignore_merges == Bool(something(get(j.model, "ignore_merges", false), false))
         end
         # A GGUF-loaded tokenizer must agree with the paired tokenizer.json
         # (and hence with HF) on every fixture case.

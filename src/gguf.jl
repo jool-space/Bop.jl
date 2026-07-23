@@ -60,24 +60,57 @@ end
 # ---------------------------------------------------------------------
 
 struct PreSpec
-    patterns::Vector{String}
+    splits::Vector{Tuple{String,Symbol}} # (pattern, keep) per Split stage
     normalizer::Union{Nothing,Symbol}
     ignore_merges::Bool
     use_regex::Bool # ByteLevel builtin GPT-2 pattern instead of Splits
 end
 
+# Verified name -> spec entries. Names are what llama.cpp's converter
+# actually emits for each family (bound via its tokenizer-checksum table,
+# hence "dbrx" covering Phi-4 and OLMo-2, and "gpt-4o" covering gpt-oss);
+# every field is generated from the family's tokenizer.json and pinned by
+# tests against the paired asset. GGUF cannot carry added-token
+# lstrip/rstrip (Phi-4 sets them in tokenizer.json) — the GGUF path
+# diverges from HF there, as does llama.cpp itself.
 const PRE_TOKENIZERS = Dict{String,PreSpec}(
     "qwen35" => PreSpec(
-        [raw"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"],
+        [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?[\\p{L}\\p{M}]+|\\p{N}| ?[^\\s\\p{L}\\p{M}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
         :NFC, false, false),
     "qwen2" => PreSpec(
-        [raw"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"],
+        [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
         :NFC, false, false),
     "llama-bpe" => PreSpec(
-        [raw"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"],
+        [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
         nothing, true, false),
-    "gpt-2" => PreSpec(String[], nothing, false, true),
+    "glm4" => PreSpec(
+        [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
+        nothing, true, false),
+    "gpt-4o" => PreSpec(
+        [("[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
+        nothing, true, false),
+    "tekken" => PreSpec(
+        [("[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*|\\p{N}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
+        nothing, true, false),
+    "deepseek-v3" => PreSpec(
+        [("\\p{N}{1,3}", :both),
+         ("[一-龥぀-ゟ゠-ヿ]+", :both),
+         ("[!\"#\$%&'()*+,\\-./:;<=>?@\\[\\\\\\]^_`{|}~][A-Za-z]+|[^\r\n\\p{L}\\p{P}\\p{S}]?[\\p{L}\\p{M}]+| ?[\\p{P}\\p{S}]+[\r\n]*|\\s*[\r\n]+|\\s+(?!\\S)|\\s+", :both)],
+        nothing, false, false),
+    "dbrx" => PreSpec(
+        [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :matches)],
+        nothing, false, false),
+    "modern-bert" => PreSpec(
+        [],
+        :NFC, false, true),
+    "gpt-2" => PreSpec(
+        [],
+        nothing, false, true),
 )
+# DeepSeek-V3's hub tokenizer.json changed after llama.cpp recorded its
+# checksum; current conversions emit "joyai-llm" (a same-tokenizer clone
+# recorded later), older GGUFs say "deepseek-v3". Same spec.
+PRE_TOKENIZERS["joyai-llm"] = PRE_TOKENIZERS["deepseek-v3"]
 
 # Token types, per llama.cpp's llama_token_type.
 const GGUF_TOKEN_CONTROL = 3
@@ -121,7 +154,7 @@ function from_gguf(md::AbstractDict)
         end
     end
 
-    splits = [Splitter(Regex(onigify(p)), :both) for p in spec.patterns]
+    splits = [Splitter(Regex(onigify(p)), keep) for (p, keep) in spec.splits]
     normalizer = spec.normalizer === nothing ? nothing :
                  let form = spec.normalizer
         s::String -> Unicode.normalize(s, form)

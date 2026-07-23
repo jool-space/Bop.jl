@@ -16,6 +16,31 @@ ensure_assets(ASSETS)
         @test String(take!(io)) == s
     end
 
+    @testset "gguf" begin
+        # PRE_TOKENIZERS entries must match the paired tokenizer.json —
+        # guards against transcription drift in the name table.
+        for (pre, asset) in [("qwen35", "qwen3.5"), ("qwen2", "qwen2.5-0.5b-instruct"),
+                             ("llama-bpe", "llama-3.2-1b")]
+            j = JSON3.read(read(joinpath(ASSETS, asset, "tokenizer.json"), String))
+            items = j.pre_tokenizer.pretokenizers
+            patterns = [String(x.pattern.Regex) for x in items if String(x.type) == "Split"]
+            @test Bop.PRE_TOKENIZERS[pre].patterns == patterns
+        end
+        # A GGUF-loaded tokenizer must agree with the paired tokenizer.json
+        # (and hence with HF) on every fixture case.
+        gg = Bop.from_gguf(joinpath(ASSETS, "qwen3.5", "metadata.gguf"))
+        js = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
+        fx = JSON3.read(read(joinpath(FIXTURES, "qwen3.5.json"), String))
+        for case in fx.cases
+            text = String(case.text)
+            enc = encode(gg, text)
+            @test enc.ids == case.ids
+            @test encode(gg, text; add_special_tokens = false).ids == case.ids_plain
+            @test decode(gg, enc.ids; skip_special_tokens = false) ==
+                  decode(js, enc.ids; skip_special_tokens = false)
+        end
+    end
+
     for fixture in sort(readdir(FIXTURES))
         name = replace(fixture, ".json" => "")
         fx = JSON3.read(read(joinpath(FIXTURES, fixture), String))

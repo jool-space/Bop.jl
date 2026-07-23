@@ -26,4 +26,14 @@ function ensure_assets(dir::AbstractString)
         mkpath(dirname(path))
         Downloads.download(url, path)
     end
+    # GGUF metadata asset: just the header + KV section of the 8 GB
+    # Qwen3.5 GGUF (KVs end ~10.9 MB in; Bop's reader never reads past
+    # them, so a truncated file is a valid test asset).
+    gguf = joinpath(dir, "qwen3.5", "metadata.gguf")
+    if !isfile(gguf)
+        url = "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-BF16.gguf"
+        @info "downloading test asset (12MB range)" gguf
+        mkpath(dirname(gguf))
+        Downloads.download(url, gguf; headers = ["Range" => "bytes=0-11999999"])
+    end
 end

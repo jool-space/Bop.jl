@@ -9,5 +9,6 @@ include("bytelevel.jl")
 include("model.jl")
 include("tokenizer.jl")
 include("load.jl")
+include("gguf.jl")
 
 end

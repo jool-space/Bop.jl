@@ -142,6 +142,12 @@ function parse_model(m)
         id2tok[id] = tok
     end
 
+    return build_bpe(vocab, id2tok, m.merges, Bool(get(m, :ignore_merges, false)))
+end
+
+# Assemble a BPE from vocab + merges. Merge entries may be "a b" strings or
+# (a, b) pairs. Shared by the tokenizer.json and GGUF loaders.
+function build_bpe(vocab::Dict{String,Int}, id2tok::Dict{Int,String}, merges, ignore_merges::Bool)
     # Byte-level alphabet → base token ids. Vocabs may omit chars for bytes
     # that cannot occur in valid UTF-8 (ModernBERT does); those entries stay
     # -1 and error at encode time if ever hit.
@@ -156,8 +162,8 @@ function parse_model(m)
     hits > 128 || error("Bop: vocab lacks the byte-level alphabet — not a byte-level BPE tokenizer?")
 
     pair_tbl = Dict{UInt64,Tuple{Int32,Int32}}()
-    sizehint!(pair_tbl, length(m.merges))
-    for (i, merge) in enumerate(m.merges)
+    sizehint!(pair_tbl, length(merges))
+    for (i, merge) in enumerate(merges)
         a, b = if merge isa AbstractString
             parts = split(merge, ' ')
             length(parts) == 2 || error("Bop: malformed merge entry $(repr(merge))")
@@ -173,8 +179,7 @@ function parse_model(m)
         get!(pair_tbl, pair_key(Int32(la), Int32(lb)), (Int32(i), Int32(merged)))
     end
 
-    return BPE(vocab, id2tok, char_id, pair_tbl,
-        Bool(get(m, :ignore_merges, false)), Dict{String,Vector{Int32}}())
+    return BPE(vocab, id2tok, char_id, pair_tbl, ignore_merges, Dict{String,Vector{Int32}}())
 end
 
 # Extract the single-sequence template from the post-processor, if any.
@@ -211,6 +216,14 @@ function parse_template(pp, added::Dict{String,AddedToken}, vocab::Dict{String,I
     error("Bop: unsupported post_processor type $(repr(ty))")
 end
 
+function build_added_re(added::Dict{String,AddedToken})
+    isempty(added) && return nothing
+    entries = sort!(collect(values(added)); by = a -> length(a.content), rev = true)
+    return Regex(join(
+        ((a.lstrip ? "\\s*" : "") * re_escape(a.content) * (a.rstrip ? "\\s*" : "")
+         for a in entries), "|"))
+end
+
 function check_decoder(d)
     d === nothing && return
     ty = String(d.type)
@@ -238,14 +251,7 @@ function from_json(j)
         added[t.content] = t
         id2added[t.id] = t
     end
-    added_re = if isempty(added)
-        nothing
-    else
-        entries = sort!(collect(values(added)); by = a -> length(a.content), rev = true)
-        Regex(join(
-            ((a.lstrip ? "\\s*" : "") * re_escape(a.content) * (a.rstrip ? "\\s*" : "")
-             for a in entries), "|"))
-    end
+    added_re = build_added_re(added)
 
     template = parse_template(get(j, :post_processor, nothing), added, model.vocab)
 

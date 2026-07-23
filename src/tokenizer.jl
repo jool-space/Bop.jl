@@ -17,6 +17,17 @@ end
 # compiled through `onigify` (load.jl) like every pattern.
 const GPT2_PATTERN = raw"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"
 
+"""
+    Tokenizer
+
+A byte-level BPE tokenizer with exact HuggingFace `tokenizers` semantics.
+Construct with `Tokenizer(path)` (= [`from_file`](@ref)),
+[`from_pretrained`](@ref), or [`from_gguf`](@ref); use with
+[`encode`](@ref) and [`decode`](@ref).
+
+Immutable after loading and safe to share across tasks and threads
+(the piece cache is task-local).
+"""
 struct Tokenizer
     model::BPE
     normalizer::Union{Nothing,Function}    # String -> String
@@ -29,10 +40,16 @@ struct Tokenizer
     template::Union{Nothing,Vector{Int}}   # post-processor single template; -1 = the sequence
 end
 
-# `tokens` is materialized on first access — most callers only read `ids`.
 # `overrides` records added-token surface forms (whitespace absorbed by
 # lstrip/rstrip) where they differ from the canonical content, as HF's
 # `.tokens` reports the matched text.
+"""
+    Encoding
+
+The result of [`encode`](@ref). `enc.ids` holds the token ids (0-based,
+matching HF); `enc.tokens` the corresponding token strings, materialized
+lazily on first access.
+"""
 mutable struct Encoding
     const tokenizer::Tokenizer
     const ids::Vector{Int}
@@ -123,6 +140,17 @@ function bytelevel_stage!(ids::Vector{Int}, t::Tokenizer, q::SubString, cache::P
     return ids
 end
 
+"""
+    encode(tokenizer, text; add_special_tokens = true) -> Encoding
+
+Tokenize `text` exactly as HuggingFace `tokenizers` would: added/special
+tokens are extracted first, the remaining segments are normalized,
+pre-tokenized, and BPE-merged. With `add_special_tokens = true` (the
+default) the post-processor template (e.g. a BOS prefix) is applied.
+
+`text` may also be a raw byte buffer (`AbstractVector{UInt8}`,
+interpreted as UTF-8), encoded without copying.
+"""
 function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = true)
     ids = Int[]
     overrides = Pair{Int,String}[]
@@ -171,9 +199,14 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
     return Encoding(t, ids, overrides)
 end
 
-"Encode a raw byte buffer (interpreted as UTF-8) without copying it."
 encode(t::Tokenizer, bytes::AbstractVector{UInt8}; kw...) = encode(t, StringView(bytes); kw...)
 
+"""
+    decode(tokenizer, ids; skip_special_tokens = true) -> String
+
+Map (0-based) token ids back to text. Special tokens are omitted unless
+`skip_special_tokens = false`. Unknown ids error.
+"""
 function decode(t::Tokenizer, ids::AbstractVector{<:Integer}; skip_special_tokens::Bool = true)
     io = IOBuffer()
     for id in ids

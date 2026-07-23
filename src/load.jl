@@ -249,6 +249,12 @@ function check_decoder(d)
     error("Bop: unsupported decoder type $(repr(ty))")
 end
 
+"""
+    from_json(parsed) -> Tokenizer
+
+Build a tokenizer from an already-parsed `tokenizer.json` object, as
+returned by `JSON.parse` (or `JSON.lazy`).
+"""
 function from_json(j)
     model = parse_model(j.model)
     normalizer = parse_normalizer(get(j, "normalizer", nothing))
@@ -273,7 +279,13 @@ function from_json(j)
         added, added_re, id2added, template)
 end
 
-"Load a tokenizer from a HF `tokenizer.json` file."
+"""
+    from_file(path) -> Tokenizer
+
+Load a tokenizer from a HuggingFace `tokenizer.json` file. Components
+outside the supported byte-level-BPE subset error loudly at load —
+nothing mis-tokenizes silently. `Tokenizer(path)` is a shorthand.
+"""
 from_file(path::AbstractString) = from_json(JSON.parse(read(path, String)))
 
 Tokenizer(path::AbstractString) = from_file(path)
@@ -294,5 +306,16 @@ function from_pretrained(repo::AbstractString; revision::AbstractString = "main"
     return from_json(JSON.parse(String(take!(io))))
 end
 
+"""
+    encode_batch(tokenizer, texts; kwargs...) -> Vector{Encoding}
+
+[`encode`](@ref) element-wise; keyword arguments are forwarded.
+"""
 encode_batch(t::Tokenizer, texts; kw...) = [encode(t, x; kw...) for x in texts]
+
+"""
+    decode_batch(tokenizer, batches; kwargs...) -> Vector{String}
+
+[`decode`](@ref) element-wise; keyword arguments are forwarded.
+"""
 decode_batch(t::Tokenizer, batches; kw...) = [decode(t, ids; kw...) for ids in batches]

@@ -1,4 +1,4 @@
-using Bop
+using Bop: Bop, encode, decode
 using JSON
 using Test
 
@@ -9,6 +9,15 @@ include("assets.jl")
 ensure_assets(ASSETS)
 
 @testset "Bop.jl" begin
+    @testset "public API" begin
+        for name in (:Tokenizer, :Encoding, :encode, :decode, :encode_batch,
+            :decode_batch, :from_file, :from_json, :from_pretrained,
+            :from_gguf, :gguf_metadata, :PRE_TOKENIZERS, :PreSpec)
+            @test Base.ispublic(Bop, name)
+            @test Base.Docs.hasdoc(Bop, name)
+        end
+    end
+
     @testset "bytelevel roundtrip" begin
         s = "héllo 🚀\t\n\0"
         io = IOBuffer()

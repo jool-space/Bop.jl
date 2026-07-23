@@ -36,7 +36,13 @@ function read_gguf_value(io::IO, ty::UInt32)
     error("Bop: unknown GGUF value type $ty")
 end
 
-"Read the metadata key-values of a GGUF file (tensor data is not touched)."
+"""
+    gguf_metadata(path) -> Dict{String,Any}
+
+Read the metadata key-values of a GGUF file. Tensor data is never
+touched — reading stops after the KV section, so a file truncated
+there parses fine.
+"""
 function gguf_metadata(path::AbstractString)
     open(path) do io
         read(io, UInt32) == 0x46554747 || error("Bop: not a GGUF file: $path")
@@ -59,6 +65,16 @@ end
 # family's tokenizer.json and pinned by tests against the paired asset.
 # ---------------------------------------------------------------------
 
+"""
+    PreSpec(splits, normalizer, ignore_merges, use_regex)
+
+Pre-tokenization recipe for one GGUF `tokenizer.ggml.pre` name:
+`splits` is a vector of `(pattern, keep)` Split stages (`keep ∈
+(:both, :gaps, :matches)`), `normalizer` an optional Unicode form
+(e.g. `:NFC`), and `use_regex` selects the built-in GPT-2 ByteLevel
+pattern instead of explicit splits. Fields must be transcribed
+verbatim from the family's `tokenizer.json`.
+"""
 struct PreSpec
     splits::Vector{Tuple{String,Symbol}} # (pattern, keep) per Split stage
     normalizer::Union{Nothing,Symbol}
@@ -66,13 +82,23 @@ struct PreSpec
     use_regex::Bool # ByteLevel builtin GPT-2 pattern instead of Splits
 end
 
-# Verified name -> spec entries. Names are what llama.cpp's converter
-# actually emits for each family (bound via its tokenizer-checksum table,
-# hence "dbrx" covering Phi-4 and OLMo-2, and "gpt-4o" covering gpt-oss);
-# every field is generated from the family's tokenizer.json and pinned by
-# tests against the paired asset. GGUF cannot carry added-token
-# lstrip/rstrip (Phi-4 sets them in tokenizer.json) — the GGUF path
-# diverges from HF there, as does llama.cpp itself.
+"""
+    PRE_TOKENIZERS :: Dict{String,PreSpec}
+
+The GGUF pre-tokenizer name table. GGUF stores a *name* (e.g.
+`"qwen35"`) where `tokenizer.json` embeds the actual split pattern;
+this maps the names llama.cpp's converter emits to their
+[`PreSpec`](@ref)s. Names are bound via llama.cpp's tokenizer-checksum
+table (hence `"dbrx"` covering Phi-4 and OLMo-2, and `"gpt-4o"`
+covering gpt-oss); every entry is generated from the family's
+`tokenizer.json` and pinned by tests against the paired asset. To
+support a new family, add its entry **and** a differential test
+against that family's `tokenizer.json`.
+
+Note: GGUF cannot carry added-token `lstrip`/`rstrip` (Phi-4 sets them
+in `tokenizer.json`) — the GGUF path diverges from HF there, as does
+llama.cpp itself.
+"""
 const PRE_TOKENIZERS = Dict{String,PreSpec}(
     "qwen35" => PreSpec(
         [("(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?[\\p{L}\\p{M}]+|\\p{N}| ?[^\\s\\p{L}\\p{M}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+", :both)],
@@ -116,7 +142,15 @@ PRE_TOKENIZERS["joyai-llm"] = PRE_TOKENIZERS["deepseek-v3"]
 const GGUF_TOKEN_CONTROL = 3
 const GGUF_TOKEN_USER_DEFINED = 4
 
-"Load a tokenizer from GGUF metadata (as returned by [`gguf_metadata`](@ref))."
+"""
+    from_gguf(path_or_metadata) -> Tokenizer
+
+Load a tokenizer directly from GGUF metadata — either a path to a
+`.gguf` file or a metadata dict from [`gguf_metadata`](@ref). Requires
+`tokenizer.ggml.model == "gpt2"` (byte-level BPE) and a
+`tokenizer.ggml.pre` name present in [`PRE_TOKENIZERS`](@ref); anything
+else errors loudly.
+"""
 function from_gguf(md::AbstractDict)
     model = get(md, "tokenizer.ggml.model", nothing)
     model == "gpt2" ||

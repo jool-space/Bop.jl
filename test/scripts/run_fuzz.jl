@@ -1,5 +1,6 @@
 # Compare Bop against the HF oracle produced by test/scripts/gen_fuzz.py.
-using Bop, JSON
+using Bop: Bop, encode, decode
+using JSON
 
 fuzz = JSON.parse(read(joinpath(@__DIR__, "..", "fuzz.json"), String))
 total = 0

@@ -46,6 +46,18 @@ ensure_assets(ASSETS)
         end
     end
 
+    @testset "shared-instance concurrency" begin
+        # One Tokenizer shared across tasks: tables are read-only, the
+        # piece memo is task-local. Determinism check under contention
+        # (a data race here would corrupt caches and scramble ids).
+        tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
+        fx = JSON.parse(read(joinpath(FIXTURES, "qwen3.5.json"), String))
+        texts = repeat([String(c.text) for c in fx.cases], 40)
+        want = [encode(tok, t).ids for t in texts]
+        tasks = [Threads.@spawn [encode(tok, t).ids for t in texts] for _ in 1:8]
+        @test all(fetch(task) == want for task in tasks)
+    end
+
     @testset "batch" begin
         tok = Bop.from_file(joinpath(ASSETS, "qwen3.5", "tokenizer.json"))
         texts = ["hello", "world <|im_end|>", ""]

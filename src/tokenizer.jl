@@ -88,7 +88,8 @@ function split_piece!(out::Vector{SubString{S}}, sp::Splitter, piece::SubString{
     return out
 end
 
-function encode_segment!(ids::Vector{Int}, t::Tokenizer, seg::AbstractString)
+function encode_segment!(ids::Vector{Int}, t::Tokenizer, seg::AbstractString,
+    cache::PieceCache = piece_cache(t.model))
     isempty(seg) && return ids
     s = t.normalizer === nothing ? seg : t.normalizer(String(seg))::String
     sub = SubString(s)
@@ -103,21 +104,21 @@ function encode_segment!(ids::Vector{Int}, t::Tokenizer, seg::AbstractString)
     # ByteLevel stage, faithful to HF: per piece, prefix space, then regex.
     for p in pieces
         if t.add_prefix_space && !startswith(p, ' ')
-            bytelevel_stage!(ids, t, SubString(" " * p))
+            bytelevel_stage!(ids, t, SubString(" " * p), cache)
         else
-            bytelevel_stage!(ids, t, p)
+            bytelevel_stage!(ids, t, p, cache)
         end
     end
     return ids
 end
 
-function bytelevel_stage!(ids::Vector{Int}, t::Tokenizer, q::SubString)
+function bytelevel_stage!(ids::Vector{Int}, t::Tokenizer, q::SubString, cache::PieceCache)
     if t.bytelevel_regex
         for sub in split_piece!(typeof(q)[], GPT2_SPLIT, q)
-            bpe!(ids, t.model, sub)
+            bpe!(ids, t.model, sub, cache)
         end
     else
-        bpe!(ids, t.model, q)
+        bpe!(ids, t.model, q, cache)
     end
     return ids
 end
@@ -125,8 +126,9 @@ end
 function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = true)
     ids = Int[]
     overrides = Pair{Int,String}[]
+    cache = piece_cache(t.model)
     if t.added_re === nothing
-        encode_segment!(ids, t, text)
+        encode_segment!(ids, t, text, cache)
     else
         # Added tokens are extracted in one pass over the raw text. Known
         # divergences from HF, both unobserved across the differential
@@ -139,7 +141,7 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
         pos = firstindex(s)
         for m in eachmatch(t.added_re, s)
             if m.offset > pos
-                encode_segment!(ids, t, @views s[pos:prevind(s, m.offset)])
+                encode_segment!(ids, t, (@views s[pos:prevind(s, m.offset)]), cache)
             end
             # A match may include whitespace absorbed by lstrip/rstrip.
             a = get(t.added, m.match, nothing)
@@ -150,7 +152,7 @@ function encode(t::Tokenizer, text::AbstractString; add_special_tokens::Bool = t
             push!(ids, a.id)
             pos = m.offset + ncodeunits(m.match)
         end
-        pos <= lastindex(s) && encode_segment!(ids, t, @views s[pos:end])
+        pos <= lastindex(s) && encode_segment!(ids, t, (@views s[pos:end]), cache)
     end
     if add_special_tokens && t.template !== nothing
         final = Int[]

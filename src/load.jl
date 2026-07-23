@@ -193,7 +193,7 @@ function build_bpe(vocab::Dict{String,Int}, id2tok::Dict{Int,String}, merges, ig
         get!(pair_tbl, pair_key(Int32(la), Int32(lb)), (Int32(i), Int32(merged)))
     end
 
-    return BPE(vocab, id2tok, rawvocab, byte_id, pair_tbl, ignore_merges, Dict{String,Vector{Int32}}())
+    return BPE(vocab, id2tok, rawvocab, byte_id, pair_tbl, ignore_merges)
 end
 
 # Extract the single-sequence template from the post-processor, if any.

@@ -33,8 +33,8 @@ Some things that come for free:
   pre-tokenizer families are covered, each verified against its HF
   counterpart.
 - **Threads**: encoding is plain Julia, so it parallelizes with
-  `Threads.@spawn` — no GIL. Use one `Tokenizer` per thread (the internal
-  cache is not thread-safe).
+  `Threads.@spawn` — no GIL, and a single `Tokenizer` is safe to share
+  across tasks (its tables are read-only; the piece cache is task-local).
 - **Raw bytes**: `encode` accepts `AbstractVector{UInt8}` (an mmap'd
   corpus, say) without copying.
 - **Batches**: `Bop.encode_batch` / `Bop.decode_batch`, and
@@ -62,8 +62,8 @@ scripts/gen_fixtures.py`; the fuzz harness is `scripts/gen_fuzz.py` +
 
 Fast enough that tokenization stops being a consideration: a chat prompt
 encodes in ~3.5 µs, and bulk text runs at ~12.5 MB/s single-threaded
-(about 4× the HF Python stack) or ~55 MB/s on 8 threads — faster than
-HF's fully parallel `encode_batch`. Loading a 13 MB tokenizer.json takes
+(about 4× the HF Python stack) or ~55 MB/s on 8 threads sharing one
+`Tokenizer` — faster than HF's fully parallel `encode_batch`. Loading a 13 MB tokenizer.json takes
 ~0.3 s.
 
 ## Fine print

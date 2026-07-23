@@ -1,5 +1,7 @@
 # Bop
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://docs.jool.space/Bop.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://docs.jool.space/Bop.jl/dev/)
 [![Build Status](https://github.com/jool-space/Bop.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jool-space/Bop.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/jool-space/Bop.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jool-space/Bop.jl)
 
@@ -37,5 +39,3 @@ and both decode modes. One known divergence: GGUF cannot carry
 added-token `lstrip`/`rstrip` flags, so GGUF-loaded tokenizers treat
 whitespace next to special tokens as llama.cpp does; load the
 `tokenizer.json` if that matters. Offsets and word ids are out of scope.
-
-Documentation: [docs.jool.space/Bop.jl](https://docs.jool.space/Bop.jl).

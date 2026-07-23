@@ -38,5 +38,10 @@ from_gguf
 gguf_metadata
 ```
 
-See [Primitives](primitives.md) for the pre-tokenizer name table GGUF
-loading depends on.
+GGUF names its pre-tokenizer instead of embedding the split patterns,
+so loading consults a verified name table.
+
+```@docs
+PRE_TOKENIZERS
+PreSpec
+```

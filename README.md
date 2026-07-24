@@ -12,11 +12,11 @@ inside a GGUF file.
 ```julia
 using Bop
 
-tok = Tokenizer("tokenizer.json")       # or Bop.from_pretrained("Qwen/Qwen3-0.6B")
-enc = encode(tok, "Hello, world!")
-enc.ids                                 # 0-based ids, exactly as HF
-enc.tokens                              # token strings, computed on demand
-decode(tok, enc.ids)                    # "Hello, world!"
+tok = Bop.Tokenizer("tokenizer.json")     # or Bop.from_pretrained("Qwen/Qwen3-0.6B")
+enc = Bop.encode(tok, "Hello, world!")
+enc.ids                                   # 0-based ids, exactly as HF
+enc.tokens                                # token strings, computed on demand
+Bop.decode(tok, enc.ids)                  # "Hello, world!"
 ```
 
 This covers the tokenizers used by essentially every current open-weights
@@ -26,9 +26,9 @@ component outside the supported set: files never mis-tokenize silently.
 
 - `Bop.from_gguf("model.gguf")` builds the tokenizer from GGUF metadata,
   with no `tokenizer.json` sidecar.
-- A `Tokenizer` is immutable and safe to share across tasks; encoding is
+- A `Bop.Tokenizer` is immutable and safe to share across tasks; encoding is
   ~3.5 µs per chat prompt, ~12.5 MB/s per thread on bulk text.
-- `encode` also accepts raw `AbstractVector{UInt8}` buffers, copy-free.
+- `Bop.encode` also accepts raw `AbstractVector{UInt8}` buffers, copy-free.
 - `Bop.encode_batch` / `Bop.decode_batch`, `add_special_tokens`,
   `skip_special_tokens` behave as in HF.
 

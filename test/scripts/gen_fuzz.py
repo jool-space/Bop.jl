@@ -58,14 +58,23 @@ def main() -> None:
     for path in sorted(glob.glob("test/assets/*/tokenizer.json")):
         name = os.path.basename(os.path.dirname(path))
         tok = Tokenizer.from_file(path)
-        result[name] = [
-            {
-                "text": t,
-                "ids": tok.encode(t).ids,
-                "dec": tok.decode(tok.encode(t).ids, skip_special_tokens=False),
-            }
-            for t in cases
-        ]
+        out = []
+        for t in cases:
+            ids = tok.encode(t).ids
+            # Prefix decode: the streaming shape. A random cut lands mid-
+            # codepoint often enough to exercise the lossy-vs-raw-bytes
+            # divergence (Bop returns raw bytes; HF from_utf8_lossy's them).
+            k = rng.randint(0, len(ids))
+            out.append(
+                {
+                    "text": t,
+                    "ids": ids,
+                    "dec": tok.decode(ids, skip_special_tokens=False),
+                    "plen": k,
+                    "pdec": tok.decode(ids[:k], skip_special_tokens=False),
+                }
+            )
+        result[name] = out
     json.dump(result, open("test/fuzz.json", "w"), ensure_ascii=False)
     print(f"seed={SEED} count={COUNT} tokenizers={len(result)}")
 

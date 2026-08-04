@@ -38,4 +38,8 @@ fixtures, and randomized fuzzing (`test/scripts/`) — ids, token strings,
 and both decode modes. One known divergence: GGUF cannot carry
 added-token `lstrip`/`rstrip` flags, so GGUF-loaded tokenizers treat
 whitespace next to special tokens as llama.cpp does; load the
-`tokenizer.json` if that matters. Offsets and word ids are out of scope.
+`tokenizer.json` if that matters. A second: `Bop.decode` of a sequence
+whose bytes end mid-codepoint (e.g. a streaming prefix cut inside a
+multi-byte character) returns the raw bytes losslessly, where HF
+substitutes U+FFFD `�` — hold back trailing invalid chars when streaming
+to a UTF-8 consumer. Offsets and word ids are out of scope.

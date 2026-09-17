@@ -6,6 +6,6 @@ Republic = "27243419-9dde-4721-b67c-fd63626fea7f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-Downloads = "1"
+Downloads = "1, < 0.0.1"
 JSON = "1"
 Republic = "2.3"
